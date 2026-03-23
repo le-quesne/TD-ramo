@@ -24,13 +24,14 @@ export function useTrips() {
         return
       }
 
-      const mapped = ((data ?? []) as Record<string, unknown>[]).map((t) => {
+      const raw = (data ?? []) as unknown as Record<string, unknown>[]
+      const mapped: TripWithDriver[] = raw.map((t) => {
         const rec = t.driver_record as Record<string, unknown> | Record<string, unknown>[]
         const driverRec = Array.isArray(rec) ? rec[0] : rec
         const profile = driverRec?.profile as Record<string, unknown> | Record<string, unknown>[]
         const driverProfile = Array.isArray(profile) ? profile[0] : profile
-        return { ...t, driver_record: undefined, driver: driverProfile }
-      }) as TripWithDriver[]
+        return { ...t, driver_record: undefined, driver: driverProfile } as unknown as TripWithDriver
+      })
 
       setTrips(mapped)
       setLoading(false)
