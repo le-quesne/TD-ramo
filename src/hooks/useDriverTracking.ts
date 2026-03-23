@@ -2,6 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useGeolocation } from './useGeolocation'
+import type { Database } from '../lib/database.types'
+
+type DriverUpdate = Database['public']['Tables']['drivers']['Update']
+type TripInsert = Database['public']['Tables']['trips']['Insert']
+type TripUpdate = Database['public']['Tables']['trips']['Update']
+type RoutePointInsert = Database['public']['Tables']['route_points']['Insert']
 
 const SYNC_INTERVAL_MS = 5000
 
@@ -35,7 +41,7 @@ export function useDriverTracking() {
       .from('trips')
       .select('*')
       .eq('driver_id', user.id)
-      .eq('status', 'active')
+      .eq('status', 'active' as const)
       .maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -44,7 +50,6 @@ export function useDriverTracking() {
           setStartedAt(new Date(data.started_at))
           geo.startTracking()
           startSyncInterval(data.id)
-          // Load existing route points
           supabase
             .from('route_points')
             .select('lat, lng, recorded_at')
@@ -69,21 +74,21 @@ export function useDriverTracking() {
 
         const now = new Date().toISOString()
 
-        // Update driver position
-        await supabase.from('drivers').update({
+        const driverUpdate: DriverUpdate = {
           current_lat: lat,
           current_lng: lng,
           last_seen_at: now,
           updated_at: now,
-        }).eq('id', user.id)
+        }
+        await supabase.from('drivers').update(driverUpdate).eq('id', user.id)
 
-        // Insert route point
-        await supabase.from('route_points').insert({
+        const routeInsert: RoutePointInsert = {
           trip_id: tripId,
           lat,
           lng,
           recorded_at: now,
-        })
+        }
+        await supabase.from('route_points').insert(routeInsert)
 
         setRoutePoints((prev) => [...prev, { lat, lng, recorded_at: now }])
       }, SYNC_INTERVAL_MS)
@@ -96,17 +101,17 @@ export function useDriverTracking() {
       if (!user) return
 
       geo.startTracking()
-
-      // Wait briefly for first position
       await new Promise((r) => setTimeout(r, 1000))
+
+      const tripInsert: TripInsert = {
+        driver_id: user.id,
+        destination_name: destinationName,
+        status: 'active',
+      }
 
       const { data: trip, error } = await supabase
         .from('trips')
-        .insert({
-          driver_id: user.id,
-          destination_name: destinationName,
-          status: 'active',
-        })
+        .insert(tripInsert)
         .select()
         .single()
 
@@ -115,15 +120,15 @@ export function useDriverTracking() {
         return
       }
 
-      // Update driver status
-      await supabase.from('drivers').update({
+      const driverUpdate: DriverUpdate = {
         status: 'driving',
         destination_name: destinationName,
         current_lat: latRef.current,
         current_lng: lngRef.current,
         last_seen_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      }).eq('id', user.id)
+      }
+      await supabase.from('drivers').update(driverUpdate).eq('id', user.id)
 
       setActiveTripId(trip.id)
       setIsDriving(true)
@@ -137,7 +142,6 @@ export function useDriverTracking() {
   const stopTrip = useCallback(async () => {
     if (!user || !activeTripId) return
 
-    // Stop interval
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
@@ -145,18 +149,18 @@ export function useDriverTracking() {
 
     geo.stopTracking()
 
-    // End trip
-    await supabase.from('trips').update({
+    const tripUpdate: TripUpdate = {
       status: 'completed',
       ended_at: new Date().toISOString(),
-    }).eq('id', activeTripId)
+    }
+    await supabase.from('trips').update(tripUpdate).eq('id', activeTripId)
 
-    // Reset driver status
-    await supabase.from('drivers').update({
+    const driverUpdate: DriverUpdate = {
       status: 'stopped',
       destination_name: null,
       updated_at: new Date().toISOString(),
-    }).eq('id', user.id)
+    }
+    await supabase.from('drivers').update(driverUpdate).eq('id', user.id)
 
     setActiveTripId(null)
     setIsDriving(false)
@@ -164,7 +168,6 @@ export function useDriverTracking() {
     setRoutePoints([])
   }, [user, activeTripId, geo])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

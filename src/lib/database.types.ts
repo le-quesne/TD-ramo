@@ -25,10 +25,12 @@ export interface Database {
           role?: 'driver' | 'admin'
           created_at?: string
         }
+        Relationships: []
       }
       drivers: {
         Row: {
           id: string
+          admin_id: string | null
           status: 'stopped' | 'driving'
           current_lat: number | null
           current_lng: number | null
@@ -40,6 +42,7 @@ export interface Database {
         }
         Insert: {
           id: string
+          admin_id?: string | null
           status?: 'stopped' | 'driving'
           current_lat?: number | null
           current_lng?: number | null
@@ -51,6 +54,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          admin_id?: string | null
           status?: 'stopped' | 'driving'
           current_lat?: number | null
           current_lng?: number | null
@@ -60,6 +64,7 @@ export interface Database {
           last_seen_at?: string
           updated_at?: string
         }
+        Relationships: []
       }
       trips: {
         Row: {
@@ -92,6 +97,7 @@ export interface Database {
           started_at?: string
           ended_at?: string | null
         }
+        Relationships: []
       }
       route_points: {
         Row: {
@@ -102,24 +108,26 @@ export interface Database {
           recorded_at: string
         }
         Insert: {
-          id?: number
+          id?: never
           trip_id: string
           lat: number
           lng: number
           recorded_at?: string
         }
         Update: {
-          id?: number
+          id?: never
           trip_id?: string
           lat?: number
           lng?: number
           recorded_at?: string
         }
+        Relationships: []
       }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
     Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }
 
