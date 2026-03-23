@@ -10,7 +10,6 @@ export function useTrips() {
   const [trips, setTrips] = useState<TripWithDriver[]>([])
   const [loading, setLoading] = useState(true)
 
-  // RLS already filters: admin only sees trips from their drivers
   useEffect(() => {
     const fetchTrips = async () => {
       const { data, error } = await supabase
@@ -49,7 +48,7 @@ export function useTrips() {
       return []
     }
 
-    return data ?? []
+    return (data ?? []) as RoutePoint[]
   }, [])
 
   return { trips, loading, fetchRoutePoints }

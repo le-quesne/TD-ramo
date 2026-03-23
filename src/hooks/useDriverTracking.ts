@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useGeolocation } from './useGeolocation'
-import type { Database } from '../lib/database.types'
+import type { Trip, Database } from '../lib/database.types'
 
 type DriverUpdate = Database['public']['Tables']['drivers']['Update']
 type TripInsert = Database['public']['Tables']['trips']['Insert']
@@ -28,13 +28,11 @@ export function useDriverTracking() {
   const latRef = useRef<number | null>(null)
   const lngRef = useRef<number | null>(null)
 
-  // Keep refs in sync with geo state
   useEffect(() => {
     latRef.current = geo.latitude
     lngRef.current = geo.longitude
   }, [geo.latitude, geo.longitude])
 
-  // Check for existing active trip on mount
   useEffect(() => {
     if (!user) return
     supabase
@@ -44,19 +42,20 @@ export function useDriverTracking() {
       .eq('status', 'active' as const)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) {
-          setActiveTripId(data.id)
+        const trip = data as Trip | null
+        if (trip) {
+          setActiveTripId(trip.id)
           setIsDriving(true)
-          setStartedAt(new Date(data.started_at))
+          setStartedAt(new Date(trip.started_at))
           geo.startTracking()
-          startSyncInterval(data.id)
+          startSyncInterval(trip.id)
           supabase
             .from('route_points')
             .select('lat, lng, recorded_at')
-            .eq('trip_id', data.id)
+            .eq('trip_id', trip.id)
             .order('recorded_at', { ascending: true })
             .then(({ data: points }) => {
-              if (points) setRoutePoints(points)
+              if (points) setRoutePoints(points as RoutePoint[])
             })
         }
       })
@@ -109,12 +108,13 @@ export function useDriverTracking() {
         status: 'active',
       }
 
-      const { data: trip, error } = await supabase
+      const { data, error } = await supabase
         .from('trips')
         .insert(tripInsert)
         .select()
         .single()
 
+      const trip = data as Trip | null
       if (error || !trip) {
         console.error('Error creating trip:', error)
         return
