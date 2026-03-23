@@ -17,7 +17,7 @@ export function useRealtimeDrivers() {
     const fetchDrivers = async () => {
       const { data, error } = await supabase
         .from('drivers')
-        .select('*, profile:profiles!inner(full_name, email)')
+        .select('*, profile:profiles!drivers_id_fkey(full_name, email)')
 
       if (error) {
         console.error('Error fetching drivers:', error)
