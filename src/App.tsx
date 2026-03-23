@@ -15,6 +15,13 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function DriverRoute({ children }: { children: React.ReactNode }) {
+  const { isAdmin, loading } = useAuth()
+  if (loading) return null
+  if (isAdmin) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -26,7 +33,9 @@ export default function App() {
             path="/driver"
             element={
               <ProtectedRoute>
-                <DriverPage />
+                <DriverRoute>
+                  <DriverPage />
+                </DriverRoute>
               </ProtectedRoute>
             }
           />
