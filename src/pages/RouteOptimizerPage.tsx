@@ -300,18 +300,39 @@ export function RouteOptimizerPage() {
   }, [mapLoaded])
 
   // Update markers when stops change (and no optimization result yet)
+  // Also show the current-order route preview on the map
   useEffect(() => {
     if (result) return
     updateMapMarkers(stops)
 
-    // Clear route layers
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    const optSrc = map.getSource('optimized-route') as mapboxgl.GeoJSONSource | undefined
+
     const origSrc = map.getSource('original-route') as mapboxgl.GeoJSONSource | undefined
+    const optSrc = map.getSource('optimized-route') as mapboxgl.GeoJSONSource | undefined
     const empty = { type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: [] as [number, number][] }, properties: {} }
-    optSrc?.setData(empty)
     origSrc?.setData(empty)
+
+    if (stops.length >= 1) {
+      // Fetch and show current-order route preview (blue)
+      const allPoints = [PLANT, ...stops, PLANT]
+      const coordStr = allPoints.map(p => `${p.lng},${p.lat}`).join(';')
+      let cancelled = false
+      fetchDirections(coordStr).then(dir => {
+        if (cancelled || !dir) { optSrc?.setData(empty); return }
+        optSrc?.setData({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: dir.geometry },
+          properties: {},
+        })
+        // Show preview in blue
+        map.setPaintProperty('optimized-route-layer', 'line-color', '#3b82f6')
+        map.setPaintProperty('optimized-route-border', 'line-color', '#dbeafe')
+      })
+      return () => { cancelled = true }
+    } else {
+      optSrc?.setData(empty)
+    }
   }, [stops, mapLoaded, result, updateMapMarkers])
 
   // Draw result on map
@@ -320,6 +341,10 @@ export function RouteOptimizerPage() {
     if (!map || !mapLoaded || !result) return
 
     updateMapMarkers(stops, result.optimizedOrder)
+
+    // Switch route color back to green for optimized result
+    map.setPaintProperty('optimized-route-layer', 'line-color', '#16a34a')
+    map.setPaintProperty('optimized-route-border', 'line-color', '#ffffff')
 
     const optSrc = map.getSource('optimized-route') as mapboxgl.GeoJSONSource | undefined
     optSrc?.setData({
