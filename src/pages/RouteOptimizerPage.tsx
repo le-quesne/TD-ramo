@@ -5,7 +5,7 @@ import { MAPBOX_TOKEN, MAP_STYLE } from '../lib/mapbox'
 import {
   Factory, MapPin, Search, X,
   ChevronUp, ChevronDown,
-  Loader2, RotateCcw, Zap, Route, ArrowRightLeft,
+  Loader2, RotateCcw, Zap, Route, ArrowRightLeft, Play,
 } from 'lucide-react'
 
 mapboxgl.accessToken = MAPBOX_TOKEN
@@ -135,6 +135,15 @@ function formatDuration(seconds: number): string {
   if (h > 0) return `${h}h ${m}min`
   return `${m} min`
 }
+
+const DEMO_STOPS: Omit<Waypoint, 'id'>[] = [
+  { name: 'Sodimac Maipú', address: 'Av. Américo Vespucio 501, Maipú', lat: -33.5100, lng: -70.7600 },
+  { name: 'Easy La Florida', address: 'Av. Vicuña Mackenna 6100, La Florida', lat: -33.5200, lng: -70.5900 },
+  { name: 'Construmart Ñuñoa', address: 'Av. Irarrázaval 5252, Ñuñoa', lat: -33.4560, lng: -70.5980 },
+  { name: 'Sherwin Williams Las Condes', address: 'Av. Las Condes 9460, Las Condes', lat: -33.4100, lng: -70.5700 },
+  { name: 'Ferretería Imperial Renca', address: 'Av. Dorsal 1400, Renca', lat: -33.3900, lng: -70.7200 },
+  { name: 'Pinturas Tricolor Providencia', address: 'Av. Providencia 2124, Providencia', lat: -33.4300, lng: -70.6100 },
+]
 
 let idCounter = 0
 
@@ -415,7 +424,35 @@ export function RouteOptimizerPage() {
     setQuery('')
     setSuggestions([])
     setShowOriginal(false)
+    setLoadingDemo(false)
     mapRef.current?.flyTo({ center: [PLANT.lng, PLANT.lat], zoom: 11, duration: 800 })
+  }, [])
+
+  const [loadingDemo, setLoadingDemo] = useState(false)
+
+  const loadDemo = useCallback(async () => {
+    setLoadingDemo(true)
+    setResult(null)
+    setShowOriginal(false)
+    setQuery('')
+    setSuggestions([])
+
+    const demoWaypoints: Waypoint[] = DEMO_STOPS.map(s => ({
+      ...s,
+      id: `wp-${++idCounter}`,
+    }))
+    setStops(demoWaypoints)
+
+    // Auto-optimize after a short delay so the map updates first
+    setTimeout(async () => {
+      try {
+        const res = await optimizeRoute(demoWaypoints)
+        setResult(res)
+        setShowOriginal(false)
+      } finally {
+        setLoadingDemo(false)
+      }
+    }, 500)
   }, [])
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -448,9 +485,19 @@ export function RouteOptimizerPage() {
         <aside className="w-[380px] bg-white border-r border-gray-200 flex flex-col shrink-0 z-10">
           {/* Origin */}
           <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
-            <div className="flex items-center gap-2 mb-1">
-              <Factory className="w-4 h-4 text-blue-600" />
-              <span className="font-semibold text-sm text-blue-900">Origen</span>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <Factory className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold text-sm text-blue-900">Origen</span>
+              </div>
+              <button
+                onClick={loadDemo}
+                disabled={loadingDemo}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700 transition-colors disabled:opacity-60 flex items-center gap-1"
+              >
+                {loadingDemo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                demo
+              </button>
             </div>
             <p className="text-xs text-gray-500">{PLANT.name}</p>
             <p className="text-[11px] text-gray-400">{PLANT.address}</p>
