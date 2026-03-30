@@ -3,8 +3,8 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MAPBOX_TOKEN, MAP_STYLE } from '../lib/mapbox'
 import {
-  Truck, Factory, MapPin, Search, X,
-  ChevronUp, ChevronDown, Clock,
+  Factory, MapPin, Search, X,
+  ChevronUp, ChevronDown,
   Loader2, RotateCcw, Zap, Route, ArrowRightLeft,
 } from 'lucide-react'
 
