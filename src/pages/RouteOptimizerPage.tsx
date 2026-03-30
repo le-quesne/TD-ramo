@@ -95,10 +95,13 @@ async function optimizeRoute(stops: Waypoint[]): Promise<OptResult | null> {
   if (!originalRes || !optimizedRes.trips?.[0]) return null
 
   const optTrip = optimizedRes.trips[0]
-  // waypoints[0] is the plant, rest are stops — extract optimized order (skip plant)
+  // waypoints[0] is the plant, rest are stops
+  // Sort stops by their waypoint_index to get the actual optimized visit order
   const waypointOrder: number[] = optimizedRes.waypoints
     .slice(1) // skip plant
-    .map((wp: any) => wp.waypoint_index - 1) // convert to 0-based stop index
+    .map((wp: any, inputIdx: number) => ({ inputIdx, optPos: wp.waypoint_index }))
+    .sort((a: { optPos: number }, b: { optPos: number }) => a.optPos - b.optPos)
+    .map((item: { inputIdx: number }) => item.inputIdx)
 
   const savings = {
     distance: originalRes.distance - optTrip.distance,
