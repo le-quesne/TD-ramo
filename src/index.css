@@ -15,3 +15,9 @@ html, body, #root {
   padding: 12px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
 }
+
+/* Remove any transition on markers so they snap instantly */
+.mapboxgl-marker {
+  transition: none !important;
+  will-change: transform;
+}

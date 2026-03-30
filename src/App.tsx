@@ -6,6 +6,8 @@ import { LoginPage } from './pages/LoginPage'
 import { DriverPage } from './pages/DriverPage'
 import { AdminDashboardPage } from './pages/AdminDashboardPage'
 import { TripHistoryPage } from './pages/TripHistoryPage'
+import { DemoPage } from './pages/DemoPage'
+import { RouteOptimizerPage } from './pages/RouteOptimizerPage'
 import { useAuth } from './contexts/AuthContext'
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -27,6 +29,8 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/demo" element={<DemoPage />} />
+          <Route path="/optimizar" element={<RouteOptimizerPage />} />
           <Route path="/login" element={<LoginPage />} />
 
           <Route
