@@ -424,14 +424,10 @@ export function RouteOptimizerPage() {
     setQuery('')
     setSuggestions([])
     setShowOriginal(false)
-    setLoadingDemo(false)
     mapRef.current?.flyTo({ center: [PLANT.lng, PLANT.lat], zoom: 11, duration: 800 })
   }, [])
 
-  const [loadingDemo, setLoadingDemo] = useState(false)
-
-  const loadDemo = useCallback(async () => {
-    setLoadingDemo(true)
+  const loadDemo = useCallback(() => {
     setResult(null)
     setShowOriginal(false)
     setQuery('')
@@ -442,17 +438,6 @@ export function RouteOptimizerPage() {
       id: `wp-${++idCounter}`,
     }))
     setStops(demoWaypoints)
-
-    // Auto-optimize after a short delay so the map updates first
-    setTimeout(async () => {
-      try {
-        const res = await optimizeRoute(demoWaypoints)
-        setResult(res)
-        setShowOriginal(false)
-      } finally {
-        setLoadingDemo(false)
-      }
-    }, 500)
   }, [])
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -492,10 +477,9 @@ export function RouteOptimizerPage() {
               </div>
               <button
                 onClick={loadDemo}
-                disabled={loadingDemo}
-                className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700 transition-colors disabled:opacity-60 flex items-center gap-1"
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700 transition-colors flex items-center gap-1"
               >
-                {loadingDemo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                <Play className="w-3 h-3" />
                 demo
               </button>
             </div>
