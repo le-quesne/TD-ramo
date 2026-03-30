@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MAPBOX_TOKEN, MAP_STYLE } from '../lib/mapbox'
 import {
-  Users, MapPin, Truck, Factory, Package,
+  Users, MapPin, Truck, Factory, Package, Clock,
   ChevronDown, ChevronUp, CircleCheck, Circle, Navigation, Loader2,
 } from 'lucide-react'
 
@@ -35,6 +35,7 @@ type DemoTruck = {
 type RouteGeo = {
   fullCoords: [number, number][]
   legCoords: [number, number][][]
+  legDurations: number[]  // seconds per leg
 }
 
 const TRUCK_COLORS = [
@@ -157,7 +158,9 @@ async function fetchRouteGeo(stops: { lat: number; lng: number }[]): Promise<Rou
       return coords
     })
 
-    return { fullCoords: route.geometry.coordinates, legCoords }
+    const legDurations: number[] = route.legs.map((leg: any) => leg.duration as number)
+
+    return { fullCoords: route.geometry.coordinates, legCoords, legDurations }
   } catch {
     return null
   }
@@ -248,6 +251,52 @@ function getCurrentDestName(truck: DemoTruck): string {
   if (truck.status === 'entregando') return truck.stops[truck.currentLeg]?.name ?? 'Planta'
   if (truck.currentLeg < truck.stops.length) return truck.stops[truck.currentLeg].name
   return 'Planta Pudahuel'
+}
+
+// ── ETA helpers ─────────────────────────────────────────────────────────────
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return '<1 min'
+  const mins = Math.round(seconds / 60)
+  if (mins < 60) return `${mins} min`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
+function formatETA(seconds: number): string {
+  const now = new Date()
+  const eta = new Date(now.getTime() + seconds * 1000)
+  return eta.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Returns ETA in seconds for each stop (index 0..stops.length-1), or null if no geo data */
+function getStopETAs(truck: DemoTruck, geo: RouteGeo | null): (number | null)[] {
+  if (!geo?.legDurations?.length) return truck.stops.map(() => null)
+
+  const etas: (number | null)[] = []
+  let accum = 0
+
+  // leg 0 = plant → stop 0, leg 1 = stop 0 → stop 1, etc.
+  for (let si = 0; si < truck.stops.length; si++) {
+    if (truck.stops[si].delivered) {
+      etas.push(null) // already delivered
+    } else {
+      const legDur = geo.legDurations[si] ?? 0
+      if (si === truck.currentLeg && truck.currentLeg < truck.stops.length) {
+        // Current leg: remaining fraction
+        const remaining = legDur * (1 - truck.segmentProgress)
+        etas.push(accum + remaining)
+        accum += remaining
+      } else if (si > truck.currentLeg) {
+        accum += geo.legDurations[si] ?? 0
+        etas.push(accum)
+      } else {
+        etas.push(null)
+      }
+    }
+  }
+  return etas
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -611,12 +660,12 @@ export function DemoPage() {
     const map = mapRef.current
     if (!map || !mapLoaded || !dataReady) return
 
-    trucks.forEach((truck) => {
+    trucks.forEach((truck, ti) => {
       const isSelected = truck.id === selectedTruck
       const existing = markersRef.current.get(truck.id)
 
       if (existing) {
-        existing.getPopup()?.setHTML(createTruckPopupHTML(truck))
+        existing.getPopup()?.setHTML(createTruckPopupHTML(truck, routeGeos[ti]))
         const el = existing.getElement()
         if (el) {
           el.style.background = getMarkerBg(truck)
@@ -641,7 +690,7 @@ export function DemoPage() {
         el.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M5 17h2l1-4h8l1 4h2"/><path d="M5 17a2 2 0 1 0 4 0"/><path d="M15 17a2 2 0 1 0 4 0"/><path d="M5 13l1.5-4.5A2 2 0 0 1 8.4 7h7.2a2 2 0 0 1 1.9 1.5L19 13"/></svg>`
 
         const popup = new mapboxgl.Popup({ offset: 25, closeButton: false })
-          .setHTML(createTruckPopupHTML(truck))
+          .setHTML(createTruckPopupHTML(truck, routeGeos[ti]))
 
         const marker = new mapboxgl.Marker(el)
           .setLngLat([truck.lng, truck.lat])
@@ -756,6 +805,7 @@ export function DemoPage() {
                 <TruckCard
                   key={truck.id}
                   truck={truck}
+                  geo={routeGeos[i]}
                   isExpanded={expandedTruck === truck.id}
                   isSelected={selectedTruck === truck.id}
                   onSelect={() => selectAndFocus(truck, i)}
@@ -785,11 +835,13 @@ function StatCard({ value, label, color }: { value: number | string; label: stri
 
 function TruckCard({
   truck,
+  geo,
   isExpanded,
   isSelected,
   onSelect,
 }: {
   truck: DemoTruck
+  geo: RouteGeo | null
   isExpanded: boolean
   isSelected: boolean
   onSelect: () => void
@@ -798,6 +850,8 @@ function TruckCard({
   const displayStatus = getDisplayStatus(truck)
   const statusClass = getStatusClass(truck)
   const destName = getCurrentDestName(truck)
+  const etas = getStopETAs(truck, geo)
+  const nextStopETA = etas.find(e => e !== null) ?? null
 
   return (
     <div className={`border-b border-gray-100 ${isSelected ? 'bg-blue-50/50' : ''}`}>
@@ -830,9 +884,17 @@ function TruckCard({
           <Navigation className="w-3 h-3" />
           {destName}
         </div>
-        <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
-          <Package className="w-3 h-3" />
-          {delivered}/{truck.stops.length} paradas
+        <div className="flex items-center justify-between mt-1">
+          <div className="flex items-center gap-1 text-xs text-gray-400">
+            <Package className="w-3 h-3" />
+            {delivered}/{truck.stops.length} paradas
+          </div>
+          {nextStopETA !== null && truck.status !== 'entregando' && (
+            <div className="flex items-center gap-1 text-xs text-blue-500 font-medium">
+              <Clock className="w-3 h-3" />
+              ETA {formatETA(nextStopETA)}
+            </div>
+          )}
         </div>
         {/* Segmented progress bar */}
         <div className="mt-2 flex gap-0.5">
@@ -865,6 +927,7 @@ function TruckCard({
             {truck.stops.map((stop, si) => {
               const isDelivered = stop.delivered
               const isCurrent = si === truck.currentLeg && truck.currentLeg < truck.stops.length
+              const eta = etas[si]
               return (
                 <div key={si} className={`flex items-start gap-2 text-xs py-0.5 ${isCurrent ? 'font-medium' : ''}`}>
                   {isDelivered ? (
@@ -877,21 +940,32 @@ function TruckCard({
                   ) : (
                     <Circle className="w-3.5 h-3.5 text-gray-300 shrink-0 mt-0.5" />
                   )}
-                  <div>
-                    <span className={
-                      isDelivered ? 'text-gray-400 line-through'
-                        : isCurrent ? 'text-gray-900'
-                        : 'text-gray-500'
-                    }>
-                      {stop.name}
-                    </span>
-                    {isCurrent && (
-                      <span
-                        className="ml-1.5 text-[10px] px-1 py-0.5 rounded text-white"
-                        style={{ background: truck.color }}
-                      >
-                        {truck.status === 'entregando' ? 'Entregando' : 'En camino'}
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={
+                        isDelivered ? 'text-gray-400 line-through'
+                          : isCurrent ? 'text-gray-900'
+                          : 'text-gray-500'
+                      }>
+                        {stop.name}
                       </span>
+                      {isCurrent && (
+                        <span
+                          className="text-[10px] px-1 py-0.5 rounded text-white shrink-0"
+                          style={{ background: truck.color }}
+                        >
+                          {truck.status === 'entregando' ? 'Entregando' : 'En camino'}
+                        </span>
+                      )}
+                    </div>
+                    {eta !== null && !isDelivered && (
+                      <div className="flex items-center gap-1 text-[10px] text-blue-500 mt-0.5">
+                        <Clock className="w-2.5 h-2.5" />
+                        {formatETA(eta)} · {formatDuration(eta)}
+                      </div>
+                    )}
+                    {isDelivered && (
+                      <div className="text-[10px] text-green-500 mt-0.5">Entregado</div>
                     )}
                   </div>
                 </div>
@@ -910,23 +984,36 @@ function TruckCard({
 
 // ── Popup HTML ───────────────────────────────────────────────────────────────
 
-function createTruckPopupHTML(truck: DemoTruck): string {
+function createTruckPopupHTML(truck: DemoTruck, geo: RouteGeo | null): string {
   const delivered = truck.stops.filter(s => s.delivered).length
   const displayStatus = getDisplayStatus(truck)
   const statusColor = truck.status === 'entregando' ? '#f59e0b'
     : truck.currentLeg === truck.stops.length ? '#6366f1'
     : '#16a34a'
+  const etas = getStopETAs(truck, geo)
 
   const stopsHTML = truck.stops.map((s, i) => {
     const isCurr = i === truck.currentLeg && truck.currentLeg < truck.stops.length
+    const eta = etas[i]
+    const etaText = eta !== null && !s.delivered
+      ? `<div style="font-size: 9px; color: #3b82f6; margin-top: 1px;">🕐 ${formatETA(eta)} · ${formatDuration(eta)}</div>`
+      : ''
     return `
-    <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 2px 0;">
+    <div style="display: flex; align-items: flex-start; gap: 6px; font-size: 11px; padding: 2px 0;">
       <span style="width: 16px; height: 16px; border-radius: 50%; background: ${s.delivered ? '#16a34a' : isCurr ? truck.color : '#cbd5e1'};
-        color: white; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0;">${i + 1}</span>
-      <span style="color: ${s.delivered ? '#9ca3af' : '#374151'}; ${s.delivered ? 'text-decoration: line-through;' : ''}">${s.name}</span>
-      ${s.delivered ? '<span style="color: #16a34a; font-size: 10px;">✓</span>' : ''}
+        color: white; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; margin-top: 1px;">${i + 1}</span>
+      <div>
+        <span style="color: ${s.delivered ? '#9ca3af' : '#374151'}; ${s.delivered ? 'text-decoration: line-through;' : ''}">${s.name}</span>
+        ${s.delivered ? '<span style="color: #16a34a; font-size: 10px;"> ✓</span>' : ''}
+        ${etaText}
+      </div>
     </div>
   `}).join('')
+
+  const nextETA = etas.find((e): e is number => e !== null) ?? null
+  const nextETAHTML = nextETA !== null && truck.status !== 'entregando'
+    ? `<div style="font-size: 11px; color: #3b82f6; font-weight: 500; margin-top: 2px;">🕐 ETA ${formatETA(nextETA)}</div>`
+    : ''
 
   return `
     <div style="font-family: system-ui, sans-serif; min-width: 210px; padding: 2px;">
@@ -941,6 +1028,7 @@ function createTruckPopupHTML(truck: DemoTruck): string {
         <span style="font-size: 11px; color: #888; margin-left: auto;">${delivered}/${truck.stops.length} entregas</span>
       </div>
       <div style="font-size: 12px; color: #555; font-weight: 500; margin-bottom: 4px;">→ ${getCurrentDestName(truck)}</div>
+      ${nextETAHTML}
       <div style="border-top: 1px solid #eee; margin-top: 6px; padding-top: 6px;">
         <div style="font-size: 10px; color: #999; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Ruta</div>
         ${stopsHTML}
